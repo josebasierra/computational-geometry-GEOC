@@ -1,0 +1,217 @@
+<html>
+<head>
+<title>GEOC - Lab 3</title>
+</head>
+
+<h1>GEOC - Lab 3</h1>
+
+<br>
+Last mouse position on canvas: <span id="mousepos"></span>
+<br>
+<canvas id="canvas" width="800" height="700"></canvas>
+
+<!---- load all input files ----->
+<script type="text/javascript" src="TestLab3_1.json.js"></script>
+<script type="text/javascript" src="TestLab3_2.json.js"></script>
+
+<form>
+Input data set:
+<select id="dataset" onchange="changeDataSet()">
+  <option value="0">Test set 1</option>
+  <option value="1">Test set 2</option>
+</select>
+</form>
+
+
+<p>
+Note: show result by coloring each point differently depending on its situation with respect to the circle. <b>Explain in the HTML the meaning of each color</b>.
+</p>
+
+<h2>Result of (an absurd) classification</h2>
+<span id="result"></span>
+
+<script type="text/javascript">
+
+//========= Auxiliary objects and data =========//
+
+// Important: these are the input data sets
+var inputJSONs = [inputJSON1,inputJSON2] ; 
+
+var points = inputJSONs[0].points; // Default dat set
+var circle_points = inputJSONs[0].circle_points;
+var currentJSON = inputJSONs[0];
+
+// See names colors at https://www.w3schools.com/colors/colors_names.asp
+// Some colors you could use
+var colors = ['Blue', 'Red', 'Green', 'Cyan', 'DarkOrange', 'Magenta', 'RosyBrown'];
+
+// default styles
+style = {
+  curve: {
+    width: 6,
+    color: "#333"
+  },
+  line: {
+    width: 1,
+    color: "#000"
+  },
+  point: {
+    radius: 4,
+    width: 2,
+    color: "Black",
+    fill: "Black",
+    arc1: 0,
+    arc2: 2 * Math.PI
+  },
+  circle: {
+	color:"black",
+	fill: "none"
+  }
+}
+
+context1 = canvas.getContext("2d");
+context1.translate(320,320); // Translation so see full points
+drawCanvas();
+
+//========= Auxiliary functions =========//
+
+// Method to show mouse position relative to canvas as the mouse moves.
+canvas.addEventListener('mousemove', function(e) {
+	var rect = canvas.getBoundingClientRect();
+	var x = e.clientX - Math.round(rect.left);
+	var y = e.clientY - Math.round(rect.top);
+	document.getElementById("mousepos").innerHTML = "(" + x + ", " + y + ")";
+});
+
+
+function drawCanvas() {
+  // Clear everything
+  context1.clearRect(-canvas.width / 2, -canvas.height / 2, 2 * canvas.width, 2 * canvas.height);
+  document.getElementById("result").innerHTML = "";
+  // Draw stuff
+  drawPoints(context1, style, points, circle_points); 
+  drawCircle(context1, style);
+
+}
+
+// Draws one point as circle
+function drawPoint(ctx, style, p) {
+    ctx.lineWidth = style.point.width;
+    ctx.strokeStyle = style.point.color;
+    ctx.fillStyle = style.point.fill;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, style.point.radius, style.point.arc1, style.point.arc2, true);
+    ctx.fill();
+    ctx.stroke();
+}
+
+// Draws the circle
+function drawCircle(ctx, style) {
+	ctx.lineWidth = style.circle.width;
+	ctx.strokeStyle = style.circle.color;
+    ctx.beginPath();
+    ctx.arc(currentJSON.c.x, currentJSON.c.y, currentJSON.r, style.point.arc1, style.point.arc2, true);
+    ctx.stroke();
+}
+
+
+// Draws all input points, with its classification color
+function drawPoints(ctx, style, points) {
+
+	for (var i = 0; i < points.length; i++) {
+	
+		var result = classifyPoint(points[i], circle_points);
+		style.point.fill = result.color;
+		style.point.color = result.color;
+		reportResult (result, i);
+		drawPoint(ctx, style, points[i]);
+	}
+}
+
+// Outputs the value of the intersection classification to the "results" HTML element
+function reportResult(classification, index) {
+	var text = "<font color='" + classification.color + "'>" + (index+1) + ":";
+	text = text + classification.description;
+	text = text + "</font><br>";
+	document.getElementById("result").innerHTML = document.getElementById("result").innerHTML + text;
+}
+
+// Method to choose between the different data set
+function changeDataSet() {
+	var index = document.getElementById("dataset").value;
+	// Change points and triangle
+	points = inputJSONs[index].points; // Default dat set
+	circle_points = inputJSONs[index].circle_points;
+	currentJSON=inputJSONs[index];
+	drawCanvas(); // Redraw
+}
+
+//========= Your code somewhere here =========//
+
+// returns matrix M without row/column number 'row'/'column' 
+function submatrix(M, row, column) {
+  var ret = new Array(M.length);
+  for (var i = 0; i < ret.length; i++){
+    ret[i] = [...M[i]];
+  }
+
+  ret.splice(row, 1);
+  for (var i = 0; i < ret.length; i++){
+    ret[i].splice(column, 1);
+  }
+
+  // console.log(row,column);
+  // console.log(M);
+  // console.log(ret);
+
+  return ret;
+}
+
+function det_points(p, q, r){
+	return (q.x - p.x)*(r.y - p.y) - (r.x - p.x)*(q.y - p.y);
+}
+
+//M is squared matrix
+function det(M){
+  if (M.length == 2){
+    return M[0][0]*M[1][1] - M[0][1]*M[1][0];
+  }
+  else {
+    return M[0][0]*det(submatrix(M,0,0)) - M[0][1]*det(submatrix(M,0,1)) + M[0][2]*det(submatrix(M,0,2)); 
+  }
+}
+
+// Determinant of the points x,a,b,c projected on the paraboloid z=x^2 + y^2
+function det_projected_points(p, a, b, c) {
+  var M = [ [b.x - a.x, b.y - a.y, (b.x - a.x)*(b.x + a.x) + (b.y - a.y)*(b.y + a.y)],
+            [c.x - a.x, c.y - a.y, (c.x - a.x)*(c.x + a.x) + (c.y - a.y)*(c.y + a.y)],
+            [p.x - a.x, p.y - a.y, (p.x - a.x)*(p.x + a.x) + (p.y - a.y)*(p.y + a.y)] ];
+  return det(M);
+}
+
+// TODO: Add your code here to classify the point w.r.t. the circle given by three points
+function classifyPoint(p, circle_points) {
+
+  var a = circle_points[0];
+  var b = circle_points[1];
+  var c = circle_points[2];
+
+  var clockOrder = Math.sign(det_points(a,b,c));
+  var planeSide = Math.sign(det_projected_points(p, a, b, c));
+  
+  if (planeSide == 0){
+    color = "blue";
+    description = "On circle";
+  }
+  else if (planeSide != clockOrder){
+    color = "green";
+  }
+  else{
+    color = "red";
+  }
+	var description = "Random classification with color " + color;
+	return {"color": color, "description": description} ;
+}
+
+</script>
+</html>
