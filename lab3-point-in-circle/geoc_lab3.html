@@ -181,7 +181,7 @@ function det(M){
   }
 }
 
-// Determinant of the points x,a,b,c projected on the paraboloid z=x^2 + y^2
+// Determinant of the points p,a,b,c projected on the paraboloid z=x^2 + y^2
 function det_projected_points(p, a, b, c) {
   var M = [ [b.x - a.x, b.y - a.y, (b.x - a.x)*(b.x + a.x) + (b.y - a.y)*(b.y + a.y)],
             [c.x - a.x, c.y - a.y, (c.x - a.x)*(c.x + a.x) + (c.y - a.y)*(c.y + a.y)],
@@ -205,11 +205,13 @@ function classifyPoint(p, circle_points) {
   }
   else if (planeSide != clockOrder){
     color = "green";
+    description = "Inside circle";
   }
   else{
     color = "red";
+    description = "Outside circle";
   }
-	var description = "Random classification with color " + color;
+
 	return {"color": color, "description": description} ;
 }
 
