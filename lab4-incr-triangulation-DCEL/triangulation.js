@@ -1,5 +1,5 @@
 
-//#region  DCEL 
+//#region DCEL 
 
 var vertexTable = [];
 var vertexCount = 0;
@@ -13,7 +13,7 @@ var edgeCount = 0;
 var enclosingTriangleAdded = false;
 
 
-//p0,p1,p2 are the points defining the enclosing initial triangle
+//p0,p1,p2 are the points defining the enclosing initial triangle (assuming clockwise order)
 function initializeDCEL(p0, p1, p2){
 
 	//clean data
@@ -27,52 +27,85 @@ function initializeDCEL(p0, p1, p2){
 	vertexTable[2] = {x: p2.x, y: p2.y, e: 4};
 	vertexCount += 3;
 
-	var f1,f2;
-	if (det(vertexTable[0], vertexTable[1], vertexTable[2]) < 0){  //check face side
-		f1 = 0;
-		f2 = -1; //infinit face
-	}
-	else {
-		f1 = -1;
-		f2 = 0;
-	}
+	//init edges  (-1 indicates infinite face)
+	edgeTable[0] = {vOrigin: 0, fRight: 0, eN: 2, eTwin: 1};
+	edgeTable[1] = {vOrigin: 1, fRight: -1, eN: 5, eTwin: 0};
 
-	//init edges
-	edgeTable[0] = {vOrigin: 0, fRight: f1, eN: 2, eTwin: 1};
-	edgeTable[1] = {vOrigin: 1, fRight: f2, eN: 5, eTwin: 0};
+	edgeTable[2] = {vOrigin: 1, fRight: 0, eN: 4, eTwin: 3};
+	edgeTable[3] = {vOrigin: 2, fRight: -1, eN: 1, eTwin: 2};
 
-	edgeTable[2] = {vOrigin: 1, fRight: f1, eN: 4, eTwin: 3};
-	edgeTable[3] = {vOrigin: 2, fRight: f2, eN: 1, eTwin: 2};
-
-	edgeTable[4] = {vOrigin: 2, fRight: f1, eN: 0, eTwin: 5};
-	edgeTable[5] = {vOrigin: 0, fRight: f2, eN: 3, eTwin: 4};
+	edgeTable[4] = {vOrigin: 2, fRight: 0, eN: 0, eTwin: 5};
+	edgeTable[5] = {vOrigin: 0, fRight: -1, eN: 3, eTwin: 4};
 
 	edgeCount += 6;
 
 	//init faces
-	faceTable[0] = {e: f1 == 0 ? 0 : 1}
+	faceTable[0] = {e: 0}
 	faceCount += 1;
 }
 
 
 function addPoint(point){
+
 	var face = findFace(point);
 	var faceEdges = getFaceEdges(face);
 
-	// add new vertex
 
-	// add new edges
-	
+	// new identifiers
+	var newVertex = vertexCount;
+	vertexCount += 1;
+
+	var newFace0 = face;   //reusing index of the face we need to remove
+	var newFace1 = faceCount;
+	var newFace2 = faceCount + 1;
+	faceCount += 2;
+
+	var newEdge0 = edgeCount;
+	var newEdge0Twin = edgeCount + 1;
+	var newEdge1 = edgeCount + 2;
+	var newEdge1Twin = edgeCount + 3;
+	var newEdge2 = edgeCount + 4;
+	var newEdge2Twin = edgeCount + 5;
+	edgeCount += 6;
+
+
+	// add new vertex
+	vertexTable[newVertex] = {x: point.x, y: point.y };
+
+
+	// add new dual edges
+	edgeTable[newEdge0] = {vOrigin: newVertex, fRight: newFace0, eN: faceEdges[0], eTwin: newEdge0Twin};
+	edgeTable[newEdge0Twin] = {vOrigin: edgeTable[faceEdges[0]].vOrigin, fRight: newFace2, eN: newEdge2, eTwin: newEdge0};
+
+	edgeTable[newEdge1] = {vOrigin: newVertex, fRight: newFace1, eN: faceEdges[1], eTwin: newEdge1Twin};
+	edgeTable[newEdge1Twin] = {vOrigin: edgeTable[faceEdges[1]].vOrigin, fRight: newFace0, eN: newEdge1, eTwin: newEdge1};
+
+	edgeTable[newEdge2] = {vOrigin: newVertex, fRight: newFace2, eN: faceEdges[2], eTwin: newEdge2Twin};
+	edgeTable[newEdge2Twin] = {vOrigin: edgeTable[faceEdges[2]].vOrigin, fRight: newFace1, eN: newEdge0, eTwin: newEdge2};
+
+
 	// remove face & add new faces
+	faceTable[newFace0] = {e: newEdge0};
+	faceTable[newFace1] = {e: newEdge1};
+	faceTable[newFace2] = {e: newEdge2};
+
 
 	// update old edges
+	edgeTable[faceEdges[0]].fRight = newFace0;
+	edgeTable[faceEdges[1]].fRight = newFace1;
+	edgeTable[faceEdges[2]].fRight = newFace2;
+
+	edgeTable[faceEdges[0]].eN = newEdge1Twin;
+	edgeTable[faceEdges[1]].eN = newEdge2Twin;
+	edgeTable[faceEdges[2]].eN = newEdge0Twin;
 }
+
 
 // TODO: replace 
 function findFace(point){
 	for (var i = 0; i < faceTable.length; i++) {
 		var faceVertices = getFaceVertices(i);
-		if (isPointInTriangle(point, faceVertices)) {
+		if (isPointInTriangle(point, [ vertexTable[faceVertices[0]], vertexTable[faceVertices[1]], vertexTable[faceVertices[2]] ])) {
 			return i;
 		} 
 	}
@@ -117,7 +150,7 @@ function computeTriangulation(points) {
 	}
 
 	var outputTriangles = new Array(faceTable.length); 
-	for (i=0;i<faceTable.length;i++) {
+	for (i=0; i<outputTriangles.length; i++) {
 		var faceVertices = getFaceVertices(i);
 		outputTriangles[i] = [faceVertices[0], faceVertices[1], faceVertices[2]]; // Store INDICES, not points
 	}
@@ -138,13 +171,14 @@ function prependEnclosingTriangle(points){
 		y: box.ymax + (box.ymax - box.ymin)
 	};
 	var p1 = {
-		x: box.xmin - (box.xmax - box.xmin)/2 - xOffset, 
-		y: box.ymin - yOffset
-	};
-	var p2 = {
 		x: box.xmax + (box.xmax - box.xmin)/2 + xOffset, 
 		y: box.ymin - yOffset
 	};
+	var p2 = {
+		x: box.xmin - (box.xmax - box.xmin)/2 - xOffset, 
+		y: box.ymin - yOffset
+	};
+
 	
 	points.unshift(p0,p1,p2);
 	enclosingTriangleAdded = true;
