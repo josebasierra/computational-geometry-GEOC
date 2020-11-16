@@ -10,6 +10,9 @@ var faceCount = 0;
 var edgeTable = [];
 var edgeCount = 0;
 
+//hierarchy of triangles used to find face of a point
+var rootTriangle = {};
+
 var enclosingTriangleAdded = false;
 
 
@@ -42,14 +45,22 @@ function initializeDCEL(p0, p1, p2){
 	//init faces
 	faceTable[0] = {e: 0}
 	faceCount += 1;
+
+	//init triangle hierarchy
+	rootTriangle = {e0: 0, e1: 2, e2: 4, subtriangles: []};
 }
 
 
 function addPoint(point){
 
-	var face = findFace(point);
-	var faceEdges = getFaceEdges(face);
+	//var face = findFace(point);
+	var findResult = findFaceHierarchy(point, rootTriangle);
+	var face = findResult.face;
+	var triangleRef = findResult.triangleRef;
 
+	//TODO: check degenerate case (point on edge/corner)
+
+	var faceEdges = getFaceEdges(face);
 
 	// new identifiers
 	var newVertex = vertexCount;
@@ -68,10 +79,8 @@ function addPoint(point){
 	var newEdge2Twin = edgeCount + 5;
 	edgeCount += 6;
 
-
 	// add new vertex
 	vertexTable[newVertex] = {x: point.x, y: point.y };
-
 
 	// add new dual edges
 	edgeTable[newEdge0] = {vOrigin: newVertex, fRight: newFace0, eN: faceEdges[0], eTwin: newEdge0Twin};
@@ -83,12 +92,10 @@ function addPoint(point){
 	edgeTable[newEdge2] = {vOrigin: newVertex, fRight: newFace2, eN: faceEdges[2], eTwin: newEdge2Twin};
 	edgeTable[newEdge2Twin] = {vOrigin: edgeTable[faceEdges[2]].vOrigin, fRight: newFace1, eN: newEdge0, eTwin: newEdge2};
 
-
 	// remove face & add new faces
 	faceTable[newFace0] = {e: newEdge0};
 	faceTable[newFace1] = {e: newEdge1};
 	faceTable[newFace2] = {e: newEdge2};
-
 
 	// update old edges
 	edgeTable[faceEdges[0]].fRight = newFace0;
@@ -98,10 +105,17 @@ function addPoint(point){
 	edgeTable[faceEdges[0]].eN = newEdge1Twin;
 	edgeTable[faceEdges[1]].eN = newEdge2Twin;
 	edgeTable[faceEdges[2]].eN = newEdge0Twin;
+
+	//update hierarchy
+	triangleRef.subtriangles = [
+		{e0: newEdge0, e1: faceEdges[0] , e2: newEdge1Twin , subtriangles: []},
+		{e0: newEdge1, e1: faceEdges[1] , e2: newEdge2Twin , subtriangles: []},
+		{e0: newEdge2, e1: faceEdges[2] , e2: newEdge0Twin , subtriangles: []}
+	]
 }
 
 
-// TODO: replace 
+// Slow version, linear time
 function findFace(point){
 	for (var i = 0; i < faceTable.length; i++) {
 		var faceVertices = getFaceVertices(i);
@@ -110,6 +124,30 @@ function findFace(point){
 		} 
 	}
 	return 0;
+}
+
+// Improved version, log(n) complexity in average if balanced hierarchy
+function findFaceHierarchy(point, triangle){
+
+	// base case
+	if (triangle.subtriangles.length == 0) {
+		return {face: edgeTable[triangle.e0].fRight, triangleRef: triangle};
+	}
+
+	// recursion
+	var subtriangles = triangle.subtriangles;
+	for (var i = 0; i < subtriangles.length; i++){
+
+		var currentTriangle = subtriangles[i];
+		var v0 = edgeTable[currentTriangle.e0].vOrigin;
+		var v1 = edgeTable[currentTriangle.e1].vOrigin;
+		var v2 = edgeTable[currentTriangle.e2].vOrigin;
+
+		if (isPointInTriangle(point, [ vertexTable[v0], vertexTable[v1], vertexTable[v2] ])){
+			return findFaceHierarchy(point, currentTriangle);
+		}
+	}
+	return null;
 }
 
 
