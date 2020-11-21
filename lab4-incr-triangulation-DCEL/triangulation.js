@@ -11,7 +11,7 @@ var edgeTable = [];
 var edgeCount = 0;
 
 //hierarchy of triangles used to find face of a point
-var rootTriangle = {};
+var rootHierarchy = {};
 var faceToLeaf = []; // map face indices to leaf nodes of the triangle hierarchy
 
 var enclosingTriangleAdded = false;
@@ -48,28 +48,26 @@ function initializeDCEL(p0, p1, p2){
 	faceCount += 1;
 
 	//init triangle hierarchy
-	rootTriangle = {e: 0, subtriangles: []};
-	faceToLeaf[0] = rootTriangle;
+	rootHierarchy = {e: 0, subtriangles: []};
+	faceToLeaf[0] = rootHierarchy;
 }
 
 
-function addPoint(point){
-
-	// find face belonging to the point
-	//var searchData = searchFaceNaive(point);
-	var searchData = searchFaceHierarchy(point, rootTriangle);
-
-	var face = searchData.face; 
+function addPointDCEL(point){
 
 	// add vertex
 	var newVertex = vertexCount;
 	vertexTable[newVertex] = {x: point.x, y: point.y }; 
 	vertexCount += 1;
 
+	// find face belonging to the point
+	var searchData = searchFaceHierarchy(point, rootHierarchy); 
+	if (searchData == null) return; 	//repeated point, ignore triangulation
+	var face = searchData.face; 
+	var isDegenerateCase = searchData.degenerateCase;
 
-	if(!searchData.degenerateCase) {
-
-		// triangulate face
+	if(!isDegenerateCase) {
+		// create identifiers
 		var faceEdges = getFaceEdges(face);
 		var newFaces = [face, faceCount, faceCount+1]; 
 		var newEdges = [edgeCount, edgeCount+2, edgeCount+4];
@@ -78,23 +76,11 @@ function addPoint(point){
 		edgeCount += 6;
 		faceCount += 2; 
 
+		// triangulate face and update hierarchy
 		triangulateFaceDCEL(faceEdges, newVertex, newFaces, newEdges, newTwinEdges);
-
-		// update hierarchy
-		var nodeRef = faceToLeaf[face];
-		nodeRef.subtriangles = [
-			{e: newEdges[0], subtriangles: []},
-			{e: newEdges[1], subtriangles: []},
-			{e: newEdges[2], subtriangles: []}
-		]
-
-		for (var i = 0; i < newFaces.length; i++){
-			faceToLeaf[newFaces[i]] = nodeRef.subtriangles[i];
-		}
+		updateHierarchyDCEL(isDegenerateCase, [face], newFaces, newEdges);
 	}
 	else {	//degenerate case, point on edge
-
-		//triangulate face
 		var edge = searchData.edge;
 		var twinEdge = edgeTable[edge].eTwin;
 		var oldFace0 = edgeTable[edge].fRight;
@@ -114,10 +100,46 @@ function addPoint(point){
 		faceCount += 2;
 
 		triangulateFaceDCEL(faceEdges, newVertex, newFaces, newEdges, newTwinEdges);
+		updateHierarchyDCEL(isDegenerateCase, [oldFace0, oldFace1], newFaces, newEdges);
+	}
+}
 
-		// update hierarchy
-		var node0Ref = faceToLeaf[oldFace0];
-		var node1Ref = faceToLeaf[oldFace1];
+
+function triangulateFaceDCEL(faceEdges, newVertex, newFaces, newEdges, newTwinEdges){
+
+	// update DCEL
+	var N = newFaces.length;
+	for (var i = 0; i < newFaces.length; i++) {	
+		// update new dual edge
+		edgeTable[newEdges[i]] = {vOrigin: newVertex, fRight: newFaces[i], eN: faceEdges[i], eTwin: newTwinEdges[i]};
+		edgeTable[newTwinEdges[i]] = {vOrigin: edgeTable[faceEdges[i]].vOrigin, fRight: newFaces[mod(i-1, N)], eN: newEdges[mod(i-1, N)], eTwin: newEdges[i]};
+
+		// update new face
+		faceTable[newFaces[i]] = {e: newEdges[i]};
+
+		// update old edges
+		edgeTable[faceEdges[i]].fRight = newFaces[i];
+		edgeTable[faceEdges[i]].eN = newTwinEdges[mod(i+1, N)];
+	}
+}
+
+
+function updateHierarchyDCEL(isDegenerateCase, oldFaces, newFaces, newEdges) {
+
+	if (!isDegenerateCase){
+		var nodeRef = faceToLeaf[oldFaces[0]];
+		nodeRef.subtriangles = [
+			{e: newEdges[0], subtriangles: []},
+			{e: newEdges[1], subtriangles: []},
+			{e: newEdges[2], subtriangles: []}
+		]
+		faceToLeaf[newFaces[0]] = nodeRef.subtriangles[0];
+		faceToLeaf[newFaces[1]] = nodeRef.subtriangles[1];
+		faceToLeaf[newFaces[2]] = nodeRef.subtriangles[2];
+	}
+	else{
+		var node0Ref = faceToLeaf[oldFaces[0]];
+		var node1Ref = faceToLeaf[oldFaces[1]];
 
 		node0Ref.subtriangles = [
 			{e: newEdges[0], subtriangles: []},
@@ -136,31 +158,12 @@ function addPoint(point){
 }
 
 
-function triangulateFaceDCEL(faceEdges, newVertex, newFaces, newEdges, newTwinEdges){
-
-	// update DCEL
-	var N = newFaces.length;
-	for (var i = 0; i < newFaces.length; i++) {
-		// update new dual edge
-		edgeTable[newEdges[i]] = {vOrigin: newVertex, fRight: newFaces[i], eN: faceEdges[i], eTwin: newTwinEdges[i]};
-		edgeTable[newTwinEdges[i]] = {vOrigin: edgeTable[faceEdges[i]].vOrigin, fRight: newFaces[mod(i-1, N)], eN: newEdges[mod(i-1, N)], eTwin: newEdges[i]};
-
-		// update new face
-		faceTable[newFaces[i]] = {e: newEdges[i]};
-
-		// update old edges
-		edgeTable[faceEdges[i]].fRight = newFaces[i];
-		edgeTable[faceEdges[i]].eN = newTwinEdges[mod(i+1, N)];
-	}
-}
-
-
 // Naive version, linear time
 function searchFaceNaive(point){
 	for (var i = 0; i < faceTable.length; i++) {
 		var faceVertices = getFaceVertices(i);
 		if (isPointInTriangle(point, [ vertexTable[faceVertices[0]], vertexTable[faceVertices[1]], vertexTable[faceVertices[2]] ])) {
-			return {face: i};
+			return {face: i, degenerateCase: false};
 		} 
 	}
 	return null;
@@ -170,9 +173,8 @@ function searchFaceNaive(point){
 // Improved version, log(n) complexity in average if balanced hierarchy
 function searchFaceHierarchy(point, triangle){
 
-	// base case
+	// BASE CASE
 	if (triangle.subtriangles.length == 0) {
-
 		var faceEdges = getFaceEdges(edgeTable[triangle.e].fRight);
 		for (var i = 0; i < faceEdges.length; i++){
 			var eOrigin = edgeTable[faceEdges[i]].vOrigin;
@@ -190,23 +192,41 @@ function searchFaceHierarchy(point, triangle){
 			face: edgeTable[triangle.e].fRight, 
 		}	
 	}
-	// recursion
+
+	// RECURSION
 	var subtriangles = triangle.subtriangles;
-	for (var i = 0; i < subtriangles.length; i++) {
 
-		var currentTriangle = subtriangles[i];
-		var e0_origin = edgeTable[currentTriangle.e].vOrigin;
-		var e0_dest = edgeTable[edgeTable[currentTriangle.e].eTwin].vOrigin;
+	if (subtriangles.length == 2){ 	// degenerate node
+		var triangle0 = subtriangles[0];
+		var triangle1 = subtriangles[1];
 
-		var nextAdjacentTriangle = subtriangles[(i+1)%subtriangles.length];
-		var e1_origin = edgeTable[nextAdjacentTriangle.e].vOrigin;
-		var e1_dest = edgeTable[edgeTable[nextAdjacentTriangle.e].eTwin].vOrigin;
+		var e0_origin = edgeTable[triangle1.e].vOrigin;
+		var e0_dest = edgeTable[edgeTable[triangle1.e].eTwin].vOrigin;
 
-		var det1 = det(vertexTable[e0_origin], vertexTable[e0_dest], point);
-		var det2 = det(vertexTable[e1_origin], vertexTable[e1_dest], point);
-		
-		if ( det1 <= 0 && (subtriangles.length == 2 || det2 > 0) ) {
-			return searchFaceHierarchy(point, currentTriangle);
+		if (det(vertexTable[e0_origin], vertexTable[e0_dest], point) >= 0) {
+			return searchFaceHierarchy(point, triangle0);
+		}
+		else{
+			return searchFaceHierarchy(point, triangle1);
+		}
+	}
+	else if (subtriangles.length == 3) {
+		for (var i = 0; i < subtriangles.length; i++) {
+
+			var currentTriangle = subtriangles[i];
+			var e0_origin = edgeTable[currentTriangle.e].vOrigin;
+			var e0_dest = edgeTable[edgeTable[currentTriangle.e].eTwin].vOrigin;
+
+			var nextAdjacentTriangle = subtriangles[(i+1)%subtriangles.length];
+			var e1_origin = edgeTable[nextAdjacentTriangle.e].vOrigin;
+			var e1_dest = edgeTable[edgeTable[nextAdjacentTriangle.e].eTwin].vOrigin;
+
+			var det1 = det(vertexTable[e0_origin], vertexTable[e0_dest], point);
+			var det2 = det(vertexTable[e1_origin], vertexTable[e1_dest], point);
+			
+			if ( det1 <= 0 && det2 > 0) {
+				return searchFaceHierarchy(point, currentTriangle);
+			}
 		}
 	}
 
@@ -247,7 +267,7 @@ function computeTriangulation(points) {
 
 	initializeDCEL(points[0], points[1], points[2]);
 	for (var i = 3; i < points.length; i++){
-		addPoint(points[i]);
+		addPointDCEL(points[i]);
 	}
 
 	var outputTriangles = new Array(faceTable.length); 
@@ -280,7 +300,6 @@ function prependEnclosingTriangle(points){
 		y: box.ymin - yOffset
 	};
 
-	
 	points.unshift(p0,p1,p2);
 	enclosingTriangleAdded = true;
 }
@@ -329,6 +348,7 @@ function isPointInTriangle(p, triangle) {
 	var onEdge =  (d_s1 == 0 && d_s2 == d_s3) || (d_s2 == 0 && d_s1 == d_s3) || (d_s3 == 0 && d_s1 == d_s2);
 	var onCorner = Math.abs(d_s1) + Math.abs(d_s2) + Math.abs(d_s3) == 1;
   
+	//TODO: change output when necessary
 	return (insideTriangle || onEdge || onCorner);
   }
 
