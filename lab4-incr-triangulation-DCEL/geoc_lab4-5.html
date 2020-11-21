@@ -176,14 +176,13 @@ function doTriangulate() {
 	var t0 = performance.now();
 	triangles = computeTriangulation(points); // This function is in triangulation.js
 	var t1 = performance.now();
-	
+
 	// Log time
 	var string = "Vertices: " + points.length + ". Triangles: " + triangles.length;
 	string += ". Triangulation time: " + (t1 - t0).toFixed(0) + " milliseconds.";
 	console.log(string)
 	// Also show it in page
 	document.getElementById("time_label").innerHTML=string;
-	//computeExtents(points);
 	redraw();
 }
 

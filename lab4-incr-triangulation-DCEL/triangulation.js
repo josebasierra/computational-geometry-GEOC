@@ -20,6 +20,10 @@ var enclosingTriangleAdded = false;
 //p0,p1,p2 are the points defining the enclosing initial triangle (assuming clockwise order)
 function initializeDCEL(p0, p1, p2){
 
+	// var totalVertices = points.length;
+	// var totalEdges = 3*totalVertices - 3 - 3;
+	// var totalFaces = 2*totalVertices - 2 - 3;
+
 	//clean data
 	vertexTable = []; vertexCount = 0;
 	faceTable = []; faceCount = 0;
@@ -49,6 +53,7 @@ function initializeDCEL(p0, p1, p2){
 
 	//init triangle hierarchy
 	rootHierarchy = {e: 0, subtriangles: []};
+	faceToLeaf = [];
 	faceToLeaf[0] = rootHierarchy;
 }
 
@@ -105,6 +110,7 @@ function addPointDCEL(point){
 }
 
 
+//faceEdges in clockwise order
 function triangulateFaceDCEL(faceEdges, newVertex, newFaces, newEdges, newTwinEdges){
 
 	// update DCEL
@@ -263,25 +269,30 @@ function getFaceVertices(faceIndex){
 
 function computeTriangulation(points) {
 
-	prependEnclosingTriangle(points);
+	addEnclosingTriangle(points);
+	var N = points.length;
 
-	initializeDCEL(points[0], points[1], points[2]);
-	for (var i = 3; i < points.length; i++){
+	initializeDCEL(points[N-3], points[N-2], points[N-1]);
+	for (var i = 0; i < N-3; i++){
 		addPointDCEL(points[i]);
 	}
 
 	var outputTriangles = new Array(faceTable.length); 
 	for (i=0; i<outputTriangles.length; i++) {
 		var faceVertices = getFaceVertices(i);
-		outputTriangles[i] = [faceVertices[0], faceVertices[1], faceVertices[2]]; // Store INDICES, not points
+		outputTriangles[i] = [mod(faceVertices[0] - 3, N), mod(faceVertices[1] -3, N), mod(faceVertices[2] - 3,N)]; // Store INDICES, not points
 	}
 	return outputTriangles;
 }
 
 
-function prependEnclosingTriangle(points){
-	if (enclosingTriangleAdded) return;
-
+function addEnclosingTriangle(points){
+	if (enclosingTriangleAdded) {
+		points.pop();
+		points.pop();
+		points.pop();
+	} 
+	
 	var box = getBoundingBox(points);
 
 	var xOffset = (box.xmax - box.xmin)*0.1;
@@ -300,7 +311,7 @@ function prependEnclosingTriangle(points){
 		y: box.ymin - yOffset
 	};
 
-	points.unshift(p0,p1,p2);
+	points.push(p0,p1,p2);
 	enclosingTriangleAdded = true;
 }
 
