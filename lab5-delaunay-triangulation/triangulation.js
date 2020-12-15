@@ -138,19 +138,21 @@ function checkDelaunay(newVertex){
 	currentEdge = startingEdge
 
 	do {	// foreach opposite edge
+		hasBeenRotation = false;
 		oppositeEdge = edgeTable[currentEdge].eN;
 		twinOppositeEdge = edgeTable[oppositeEdge].eTwin;
 		adjacentFace = edgeTable[twinOppositeEdge].fRight;
 
 		if (adjacentFace != -1 && !isDelaunayFace(newVertex, adjacentFace)){
 			rotateEdge(newVertex, oppositeEdge, adjacentFace);
+			hasBeenRotation = true;
 		}
 		else {
 			lastEdge = edgeTable[oppositeEdge].eN;
 			currentEdge = edgeTable[lastEdge].eTwin;
 		}
 	} 
-	while(currentEdge != startingEdge);
+	while(currentEdge != startingEdge || hasBeenRotation);
 }
 
 
