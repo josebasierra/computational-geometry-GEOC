@@ -10,10 +10,6 @@ var faceCount = 0;
 var edgeTable = [];
 var edgeCount = 0;
 
-//hierarchy of triangles used to find face of a point
-var rootHierarchy = {};
-var faceToLeaf = []; // map face indices to leaf nodes of the triangle hierarchy
-
 var enclosingTriangleAdded = false;
 
 
@@ -50,11 +46,6 @@ function initializeDCEL(p0, p1, p2){
 	//init faces
 	faceTable[0] = {e: 0}
 	faceCount += 1;
-
-	//init triangle hierarchy
-	rootHierarchy = {e: 0, subtriangles: []};
-	faceToLeaf = [];
-	faceToLeaf[0] = rootHierarchy;
 }
 
 
@@ -69,43 +60,19 @@ function addPointDCEL(point){
 	var searchData = searchFaceNaive(point); 
 	if (searchData == null) return; 	//repeated point, ignore triangulation
 	var face = searchData.face; 
-	var isDegenerateCase = searchData.degenerateCase;
 
-	if(!isDegenerateCase) {
-		// create identifiers
-		var faceEdges = getFaceEdges(face);
-		var newFaces = [face, faceCount, faceCount+1]; 
-		var newEdges = [edgeCount, edgeCount+2, edgeCount+4];
-		var newTwinEdges = [edgeCount+1, edgeCount+3, edgeCount+5];
+	// create identifiers
+	var faceEdges = getFaceEdges(face);
+	var newFaces = [face, faceCount, faceCount+1]; 
+	var newEdges = [edgeCount, edgeCount+2, edgeCount+4];
+	var newTwinEdges = [edgeCount+1, edgeCount+3, edgeCount+5];
 
-		edgeCount += 6;
-		faceCount += 2; 
+	edgeCount += 6;
+	faceCount += 2; 
 
-		// triangulate face and update hierarchy
-		triangulateFaceDCEL(faceEdges, newVertex, newFaces, newEdges, newTwinEdges);
-		checkDelaunay(newVertex);
-	}
-	// else {	//degenerate case, point on edge
-	// 	var edge = searchData.edge;
-	// 	var twinEdge = edgeTable[edge].eTwin;
-	// 	var oldFace0 = edgeTable[edge].fRight;
-	// 	var oldFace1 = edgeTable[twinEdge].fRight;
-
-	// 	var faceEdges = new Array(4);
-	// 	faceEdges[0] = edgeTable[edge].eN;
-	// 	faceEdges[1] = edgeTable[faceEdges[0]].eN;
-	// 	faceEdges[2] = edgeTable[twinEdge].eN;
-	// 	faceEdges[3] = edgeTable[faceEdges[2]].eN;
-
-	// 	var newFaces = [edgeTable[edge].fRight, edgeTable[twinEdge].fRight, faceCount, faceCount+1];
-	// 	var newEdges = [edge, edgeCount, edgeCount+2, edgeCount+4];
-	// 	var newTwinEdges = [twinEdge, edgeCount+1, edgeCount+3, edgeCount+5];
-
-	// 	edgeCount += 8;
-	// 	faceCount += 2;
-
-	// 	triangulateFaceDCEL(faceEdges, newVertex, newFaces, newEdges, newTwinEdges);
-	// }
+	// triangulate face and transform it to delaunay
+	triangulateFaceDCEL(faceEdges, newVertex, newFaces, newEdges, newTwinEdges);
+	transformToDelaunayDCEL(newVertex);
 }
 
 
@@ -133,18 +100,18 @@ function triangulateFaceDCEL(faceEdges, newVertex, newFaces, newEdges, newTwinEd
 }
 
 
-function checkDelaunay(newVertex){
+function transformToDelaunayDCEL(newVertex){
 	var startingEdge = vertexTable[newVertex].e;
 	currentEdge = startingEdge
 
 	do {	// foreach opposite edge
 		hasBeenRotation = false;
 		oppositeEdge = edgeTable[currentEdge].eN;
-		twinOppositeEdge = edgeTable[oppositeEdge].eTwin;
-		adjacentFace = edgeTable[twinOppositeEdge].fRight;
+		adjacentFace = edgeTable[edgeTable[oppositeEdge].eTwin].fRight;
 
-		if (adjacentFace != -1 && !isDelaunayFace(newVertex, adjacentFace)){
-			rotateEdge(newVertex, oppositeEdge, adjacentFace);
+		// if no infinit face and triangle contains newVertex, then rotate edge
+		if (adjacentFace != -1 && isInsideTriangleCircle(newVertex, adjacentFace)){
+			rotateEdge(oppositeEdge);
 			hasBeenRotation = true;
 		}
 		else {
@@ -156,47 +123,56 @@ function checkDelaunay(newVertex){
 }
 
 
-function isDelaunayFace(vertex, face){
+function isInsideTriangleCircle(vertex, face){
 	var faceVertices = getFaceVertices(face);
-	return !isPointInCircle(vertexTable[vertex],  [ vertexTable[faceVertices[0]], vertexTable[faceVertices[1]], vertexTable[faceVertices[2]] ] );
+	return isPointInCircle(vertexTable[vertex],  [ vertexTable[faceVertices[0]], vertexTable[faceVertices[1]], vertexTable[faceVertices[2]] ] );
 }
 
 
-function rotateEdge(vertex, oppositeEdge,  adjacentFace){
-	var twinOppositeEdge = edgeTable[oppositeEdge].eTwin;
+function rotateEdge(edge){
 
-	var e0 = edgeTable[oppositeEdge].eN;
+	// identify data requiring update
+	var twinEdge = edgeTable[edge].eTwin;
+
+	var e0 = edgeTable[edge].eN;
 	var e1 = edgeTable[e0].eN;
-	var e2 = edgeTable[twinOppositeEdge].eN;
+	var e2 = edgeTable[twinEdge].eN;
 	var e3 = edgeTable[e2].eN;
 
 	var f0 = edgeTable[e0].fRight;
 	var f1 = edgeTable[e2].fRight;
 
-	// rotate oppositeEdge counterclockwise
-	edgeData = edgeTable[oppositeEdge];
-	twinEdgeData = edgeTable[twinOppositeEdge];
+	var v0 = edgeTable[e0].vOrigin;
+	var v1 = edgeTable[e2].vOrigin;
 
-	edgeData.vOrigin = vertex;
+	// rotate edge counterclockwise
+	edgeData = edgeTable[edge];
+	twinEdgeData = edgeTable[twinEdge];
+
+	edgeData.vOrigin = edgeTable[e1].vOrigin;
 	edgeData.eN = e3;
 	
 	twinEdgeData.vOrigin = edgeTable[e3].vOrigin;
 	twinEdgeData.eN = e1;
 
 	//update affected edges
-	edgeTable[e0].eN = oppositeEdge;
+	edgeTable[e0].eN = edge;
 
 	edgeTable[e1].eN = e2;
 	edgeTable[e1].fRight = f1;
 
-	edgeTable[e2].eN = twinOppositeEdge;
+	edgeTable[e2].eN = twinEdge;
 
 	edgeTable[e3].eN = e0;
 	edgeTable[e3].fRight = f0;
 
-	//update faces
-	faceTable[f0].e = oppositeEdge;
-	faceTable[f1].e = twinOppositeEdge;
+	//update affected faces
+	faceTable[f0].e = edge;
+	faceTable[f1].e = twinEdge;
+
+	//update affected vertices
+	vertexTable[v0].e = e0;
+	vertexTable[v1].e = e2;
 }
 
 
@@ -265,7 +241,7 @@ function addEnclosingTriangle(points){
 		points.pop();
 	} 
 	
-	var box = getBoundingBox(points);
+	box = getBoundingBox(points);
 
 	var xOffset = (box.xmax - box.xmin)*0.1;
 	var yOffset = (box.ymax - box.ymin)*0.1;
@@ -309,11 +285,6 @@ function getBoundingBox(points) {
 }
 
 
-function mod(a, n) {
-	return ((a % n ) + n ) % n;
-}
-
-
 function isPointInTriangle(p, triangle) {
 
 	//determinant signs of the triangles segments
@@ -331,7 +302,25 @@ function isPointInTriangle(p, triangle) {
   }
 
 
-// returns matrix M without row/column number 'row'/'column' 
+function isPointInCircle(p, circle_points) {
+
+	var a = circle_points[0];
+	var b = circle_points[1];
+	var c = circle_points[2];
+
+	var clockOrder = Math.sign(det_points(a,b,c));
+	var planeSide = Math.sign(det_projected_points(p, a, b, c));
+
+	return  planeSide == 0 || planeSide != clockOrder;
+}
+
+
+function mod(a, n) {
+	return ((a % n ) + n ) % n;
+}
+
+
+// returns matrix M without row & column 
 function submatrix(M, row, column) {
 	var ret = new Array(M.length);
 	for (var i = 0; i < ret.length; i++){
@@ -344,45 +333,32 @@ function submatrix(M, row, column) {
 	}
 	
 	return ret;
-  }
+}
   
 
-  function det_points(p, q, r){
-	  return (q.x - p.x)*(r.y - p.y) - (r.x - p.x)*(q.y - p.y);
-  }
-  
+function det_points(p, q, r){
+	return (q.x - p.x)*(r.y - p.y) - (r.x - p.x)*(q.y - p.y);
+}
 
-  //M is squared matrix
-  function det(M){
+
+//M is squared matrix
+function det(M){
 	if (M.length == 2){
-	  return M[0][0]*M[1][1] - M[0][1]*M[1][0];
+		return M[0][0]*M[1][1] - M[0][1]*M[1][0];
 	}
 	else {
-	  return M[0][0]*det(submatrix(M,0,0)) - M[0][1]*det(submatrix(M,0,1)) + M[0][2]*det(submatrix(M,0,2)); 
+		return M[0][0]*det(submatrix(M,0,0)) - M[0][1]*det(submatrix(M,0,1)) + M[0][2]*det(submatrix(M,0,2)); 
 	}
-  }
-  
+}
 
-  // Determinant of the points p,a,b,c projected on the paraboloid z=x^2 + y^2
-  function det_projected_points(p, a, b, c) {
+
+// Determinant of the points p,a,b,c projected on the paraboloid z=x^2 + y^2
+function det_projected_points(p, a, b, c) {
 	var M = [ [b.x - a.x, b.y - a.y, (b.x - a.x)*(b.x + a.x) + (b.y - a.y)*(b.y + a.y)],
-			  [c.x - a.x, c.y - a.y, (c.x - a.x)*(c.x + a.x) + (c.y - a.y)*(c.y + a.y)],
-			  [p.x - a.x, p.y - a.y, (p.x - a.x)*(p.x + a.x) + (p.y - a.y)*(p.y + a.y)] ];
+				[c.x - a.x, c.y - a.y, (c.x - a.x)*(c.x + a.x) + (c.y - a.y)*(c.y + a.y)],
+				[p.x - a.x, p.y - a.y, (p.x - a.x)*(p.x + a.x) + (p.y - a.y)*(p.y + a.y)] ];
 	return det(M);
-  }
-
-
-  function isPointInCircle(p, circle_points) {
-  
-	var a = circle_points[0];
-	var b = circle_points[1];
-	var c = circle_points[2];
-  
-	var clockOrder = Math.sign(det_points(a,b,c));
-	var planeSide = Math.sign(det_projected_points(p, a, b, c));
-  
-	return  planeSide == 0 || planeSide != clockOrder;
-  }
+}
 
 
   //#endregion
