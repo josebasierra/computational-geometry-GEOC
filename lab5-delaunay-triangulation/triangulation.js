@@ -247,7 +247,7 @@ function computeTriangulation(points) {
 	var outputTriangles = new Array(faceTable.length); 
 	for (i=0; i<outputTriangles.length; i++) {
 		var faceVertices = getFaceVertices(i);
-		outputTriangles[i] = [mod(faceVertices[0] - 3, N), mod(faceVertices[1] -3, N), mod(faceVertices[2] - 3,N)]; // Store INDICES, not points
+		outputTriangles[i] = [mod(faceVertices[2] - 3, N), mod(faceVertices[1] -3, N), mod(faceVertices[0] - 3,N)]; // Store INDICES, not points
 	}
 	return outputTriangles;
 }
