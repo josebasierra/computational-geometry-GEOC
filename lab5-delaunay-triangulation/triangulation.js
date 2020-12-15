@@ -1,4 +1,3 @@
-
 //#region DCEL 
 
 var vertexTable = [];
@@ -57,9 +56,9 @@ function addPointDCEL(point){
 	vertexCount += 1;
 
 	// find face belonging to the point
-	var searchData = searchFaceNaive(point); 
-	if (searchData == null) return; 	//repeated point, ignore triangulation
-	var face = searchData.face; 
+	var face = searchFaceFromAuxiliarEdge(vertexTable[2].e, point);
+	//var face = searchFaceSpatialAugmented(point); 
+	if (face == null) return; 	// repeated point, ignore triangulation
 
 	// create identifiers
 	var faceEdges = getFaceEdges(face);
@@ -181,10 +180,30 @@ function searchFaceNaive(point){
 	for (var i = 0; i < faceTable.length; i++) {
 		var faceVertices = getFaceVertices(i);
 		if (isPointInTriangle(point, [ vertexTable[faceVertices[0]], vertexTable[faceVertices[1]], vertexTable[faceVertices[2]] ])) {
-			return {face: i, degenerateCase: false};
+			return i;
 		} 
 	}
 	return null;
+}
+
+
+function searchFaceFromAuxiliarEdge(auxiliarEdge, point) {
+	currentEdge = auxiliarEdge;
+	do {
+		var vOrig = edgeTable[currentEdge].vOrigin;
+		var vDest = edgeTable[edgeTable[currentEdge].eTwin].vOrigin;
+		
+		// if  point to the left
+		if (det_points(vertexTable[vOrig],vertexTable[vDest], point) > 0){
+			var currentEdgeTwin = edgeTable[currentEdge].eTwin;
+			return searchFaceFromAuxiliarEdge(currentEdgeTwin, point);
+		}
+
+		currentEdge = edgeTable[currentEdge].eN;
+	}
+	while(currentEdge != auxiliarEdge);
+
+	return edgeTable[currentEdge].fRight;
 }
 
 
@@ -241,7 +260,7 @@ function addEnclosingTriangle(points){
 		points.pop();
 	} 
 	
-	box = getBoundingBox(points);
+	var box = getBoundingBox(points);
 
 	var xOffset = (box.xmax - box.xmin)*0.1;
 	var yOffset = (box.ymax - box.ymin)*0.1;
