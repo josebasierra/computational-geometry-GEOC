@@ -4,7 +4,7 @@ var vertexTable = [];
 var vertexCount = 0;
 
 var faceTable = [];
-var faceCount = 0;
+var faceCount = 0; 
 
 var edgeTable = [];
 var edgeCount = 0;
@@ -57,8 +57,6 @@ function addPointDCEL(point){
 
 	// find face belonging to the point
 	var face = searchFaceFromAuxiliarEdge(vertexTable[2].e, point);
-	//var face = searchFaceSpatialAugmented(point); 
-	if (face == null) return; 	// repeated point, ignore triangulation
 
 	// create identifiers
 	var faceEdges = getFaceEdges(face);
@@ -98,6 +96,65 @@ function triangulateFaceDCEL(faceEdges, newVertex, newFaces, newEdges, newTwinEd
 	}
 }
 
+
+// Naive version, linear time
+function searchFaceNaive(point){
+	for (var i = 0; i < faceTable.length; i++) {
+		var faceVertices = getFaceVertices(i);
+		if (isPointInTriangle(point, [ vertexTable[faceVertices[0]], vertexTable[faceVertices[1]], vertexTable[faceVertices[2]] ])) {
+			return i;
+		} 
+	}
+	return null;
+}
+
+
+function searchFaceFromAuxiliarEdge(auxiliarEdge, point) {
+	currentEdge = auxiliarEdge;
+	do {
+		var vOrig = edgeTable[currentEdge].vOrigin;
+		var vDest = edgeTable[edgeTable[currentEdge].eTwin].vOrigin;
+		
+		// if  point to the left
+		if (det_points(vertexTable[vOrig],vertexTable[vDest], point) > 0){
+			var currentEdgeTwin = edgeTable[currentEdge].eTwin;
+			return searchFaceFromAuxiliarEdge(currentEdgeTwin, point);
+		}
+
+		currentEdge = edgeTable[currentEdge].eN;
+	}
+	while(currentEdge != auxiliarEdge);
+
+	return edgeTable[currentEdge].fRight;
+}
+
+
+function getFaceEdges(faceIndex){
+	var edges = new Array(3);
+
+	edges[0] = faceTable[faceIndex].e;
+	edges[1] = edgeTable[edges[0]].eN;
+	edges[2] = edgeTable[edges[1]].eN;
+
+	return edges;
+}
+
+
+function getFaceVertices(faceIndex){
+	var vertices = new Array(3);
+	var edges = getFaceEdges(faceIndex);
+
+	vertices[0] = edgeTable[edges[0]].vOrigin;
+	vertices[1] = edgeTable[edges[1]].vOrigin;
+	vertices[2] = edgeTable[edges[2]].vOrigin;
+
+	return vertices;
+}
+
+//#endregion
+
+
+//#region Delaunay
 
 function transformToDelaunayDCEL(newVertex){
 	var startingEdge = vertexTable[newVertex].e;
@@ -174,67 +231,80 @@ function rotateEdge(edge){
 	vertexTable[v1].e = e2;
 }
 
-
-// Naive version, linear time
-function searchFaceNaive(point){
-	for (var i = 0; i < faceTable.length; i++) {
-		var faceVertices = getFaceVertices(i);
-		if (isPointInTriangle(point, [ vertexTable[faceVertices[0]], vertexTable[faceVertices[1]], vertexTable[faceVertices[2]] ])) {
-			return i;
-		} 
-	}
-	return null;
-}
+//#endregion
 
 
-function searchFaceFromAuxiliarEdge(auxiliarEdge, point) {
-	currentEdge = auxiliarEdge;
+//#region Boundary prunning
+
+// returns the set of edges that come out of the given vertex (in clockwise order)
+function getVertexEdges(vertex){
+	var edges = [];
+
+	var startingEdge = vertexTable[vertex].e;
+	currentEdge = startingEdge
 	do {
-		var vOrig = edgeTable[currentEdge].vOrigin;
-		var vDest = edgeTable[edgeTable[currentEdge].eTwin].vOrigin;
-		
-		// if  point to the left
-		if (det_points(vertexTable[vOrig],vertexTable[vDest], point) > 0){
-			var currentEdgeTwin = edgeTable[currentEdge].eTwin;
-			return searchFaceFromAuxiliarEdge(currentEdgeTwin, point);
-		}
+		edges.push(currentEdge);
+		triangleEdge2 = edgeTable[currentEdge].eN;
+		triangleEdge3 = edgeTable[triangleEdge2].eN; 
 
-		currentEdge = edgeTable[currentEdge].eN;
-	}
-	while(currentEdge != auxiliarEdge);
-
-	return edgeTable[currentEdge].fRight;
-}
-
-
-function getFaceEdges(faceIndex){
-	var edges = new Array(3);
-
-	edges[0] = faceTable[faceIndex].e;
-	edges[1] = edgeTable[edges[0]].eN;
-	edges[2] = edgeTable[edges[1]].eN;
+		currentEdge = edgeTable[triangleEdge3].eTwin;
+	} 
+	while(currentEdge != startingEdge);
 
 	return edges;
 }
 
 
-function getFaceVertices(faceIndex){
-	var vertices = new Array(3);
-	var edges = getFaceEdges(faceIndex);
+function removeEdge(edge){
+	var edgeTwin = edgeTable[edge].eTwin;
+	var faceRight = edgeTable[edge].fRight;
+	var faceLeft = edgeTable[edgeTwin].fRight;
 
-	vertices[0] = edgeTable[edges[0]].vOrigin;
-	vertices[1] = edgeTable[edges[1]].vOrigin;
-	vertices[2] = edgeTable[edges[2]].vOrigin;
+	faceTable[faceRight] = null;
+	faceTable[faceLeft] = null;
+}
 
-	return vertices;
+
+function pruneBoundaries(boundaries){
+	boundaries.forEach(boundary => {
+		if (boundary.length == 1){
+			var vertex = boundary[0] + 3; //we need to consider the enclosing triangle points added first
+			var edges = getVertexEdges(vertex);
+			edges.forEach(edge => {
+				removeEdge(edge);
+			});
+		}
+		else {
+			for (var i = 0; i < boundary.length; i++) {
+				var vertex = boundary[i] + 3;  
+				var previousVertex = boundary[mod(i-1, boundary.length)] + 3;
+				var nextVertex = boundary[mod(i+1, boundary.length)] + 3;
+
+				var edges = getVertexEdges(vertex);
+				edges.forEach(edge => {
+					var vDest = edgeTable[edgeTable[edge].eTwin].vOrigin;
+
+					// we need to check if local boundary is convex or concave
+					var turn = det_points(vertexTable[previousVertex], vertexTable[vertex], vertexTable[nextVertex]);
+
+					var det1 = det_points(vertexTable[previousVertex], vertexTable[vertex], vertexTable[vDest]);
+					var det2 = det_points(vertexTable[vertex], vertexTable[nextVertex], vertexTable[vDest]);
+
+					if ( (turn < 0 && det1 < 0 && det2 < 0) || (turn >= 0 && (det1 < 0 || det2 < 0) )) {
+						removeEdge(edge);
+					}
+				});
+			}
+		}
+	});
 }
 
 //#endregion
 
 
-// #region Triangulation
+//#region Triangulation
 
-function computeTriangulation(points) {
+function computeTriangulation(points, boundaries) {
 
 	addEnclosingTriangle(points);
 	var N = points.length;
@@ -244,10 +314,19 @@ function computeTriangulation(points) {
 		addPointDCEL(points[i]);
 	}
 
-	var outputTriangles = new Array(faceTable.length); 
-	for (i=0; i<outputTriangles.length; i++) {
-		var faceVertices = getFaceVertices(i);
-		outputTriangles[i] = [mod(faceVertices[2] - 3, N), mod(faceVertices[1] -3, N), mod(faceVertices[0] - 3,N)]; // Store INDICES, not points
+	if (boundaries != null){
+		pruneBoundaries(boundaries);
+	}
+
+	var outputTriangles = []; 
+	for (i=0; i<faceCount; i++) {
+		if (faceTable[i] != null){
+			var faceVertices = getFaceVertices(i);
+			outputTriangles.push([mod(faceVertices[2] - 3, N), mod(faceVertices[1] -3, N), mod(faceVertices[0] - 3,N)]); // Store INDICES, not points
+		}
+		else{
+			console.log("Face ignored");
+		}
 	}
 	return outputTriangles;
 }

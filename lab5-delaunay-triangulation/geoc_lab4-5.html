@@ -186,6 +186,11 @@ function doTriangulate() {
 	redraw();
 }
 
+function doPruneBoundaries(){
+	triangles = computeTriangulation(points, boundaries);
+	redraw();
+}
+
 
 </script>
 
