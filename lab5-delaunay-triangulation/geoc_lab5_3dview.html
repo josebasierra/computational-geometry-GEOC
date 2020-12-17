@@ -80,6 +80,7 @@
 	 
 		// This is the input
 		var points = inputJSON.points; // Requires inputJSON variable set in json.js file
+		var boundaries = inputJSON.boundaries;
 		var extents = computeExtents(points);
 
         /**
@@ -117,7 +118,7 @@
 		
 		// IMPORTANT Here we invoke the triangulation method
 		//           Make sure your methods returns the triangles AFTER PRUNNING boundaries
-		var triangles = computeTriangulation(points);
+		var triangles = computeTriangulation(points, boundaries);
 			
 		for (var i=0;i<triangles.length;i++) {
 			scene.add(createTriangleMesh(triangles[i]));

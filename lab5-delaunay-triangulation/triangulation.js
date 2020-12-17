@@ -262,6 +262,9 @@ function removeEdge(edge){
 
 	faceTable[faceRight] = null;
 	faceTable[faceLeft] = null;
+
+	// TODO: update other affected DCEL data 
+	// if it needs to be used in the future after deletions
 }
 
 
